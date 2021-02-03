@@ -1,301 +1,881 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-
+<!DOCTYPE HTML>
 <html>
-
 <head>
-  <meta charset="utf-8">
-  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>JabRef references</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<script type="text/javascript">
+<!--
+// QuickSearch script for JabRef HTML export 
+// Version: 3.0
+//
+// Copyright (c) 2006-2011, Mark Schenk
+//
+// This software is distributed under a Creative Commons Attribution 3.0 License
+// http://creativecommons.org/licenses/by/3.0/
+//
+// Features:
+// - intuitive find-as-you-type searching
+//    ~ case insensitive
+//    ~ ignore diacritics (optional)
+//
+// - search with/without Regular Expressions
+// - match BibTeX key
+//
 
-  <title>Dra. Ana Carolina Olivera - Publicaciones Destacadas</title>
-  <meta content="" name="descriptison">
-  <meta content="" name="keywords">
+// Search settings
+var searchAbstract = true;	// search in abstract
+var searchComment = true;	// search in comment
 
-  <!-- Favicons -->
-  <link href="assets/img/favicon.png" rel="icon">
-  <link href="assets/img/apple-touch-icon.png" rel="apple-touch-icon">
+var noSquiggles = true; 	// ignore diacritics when searching
+var searchRegExp = false; 	// enable RegExp searches
 
-  <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,600,600i,700,700i|Raleway:300,300i,400,400i,500,500i,600,600i,700,700i|Poppins:300,300i,400,400i,500,500i,600,600i,700,700i" rel="stylesheet">
 
-  <!-- Vendor CSS Files -->
-  <link href="assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
-  <link href="assets/vendor/icofont/icofont.min.css" rel="stylesheet">
-  <link href="assets/vendor/boxicons/css/boxicons.min.css" rel="stylesheet">
-  <link href="assets/vendor/venobox/venobox.css" rel="stylesheet">
-  <link href="assets/vendor/owl.carousel/assets/owl.carousel.min.css" rel="stylesheet">
-  <link href="assets/vendor/aos/aos.css" rel="stylesheet">
+if (window.addEventListener) {
+	window.addEventListener("load",initSearch,false); }
+else if (window.attachEvent) {
+	window.attachEvent("onload", initSearch); }
 
-  <!--Agregando iconos-->
-  <script src="https://code.iconify.design/1/1.0.7/iconify.min.js"></script>
-  <!--Agregando Bibitem-->
-  
-  <!-- Template Main CSS File -->
-  <link href="assets/css/style.css" rel="stylesheet">
+function initSearch() {
+	// check for quick search table and searchfield
+	if (!document.getElementById('qs_table')||!document.getElementById('quicksearch')) { return; }
 
+	// load all the rows and sort into arrays
+	loadTableData();
+	
+	//find the query field
+	qsfield = document.getElementById('qs_field');
+
+	// previous search term; used for speed optimisation
+	prevSearch = '';
+
+	//find statistics location
+	stats = document.getElementById('stat');
+	setStatistics(-1);
+	
+	// set up preferences
+	initPreferences();
+
+	// shows the searchfield
+	document.getElementById('quicksearch').style.display = 'block';
+	document.getElementById('qs_field').onkeyup = quickSearch;
+}
+
+function loadTableData() {
+	// find table and appropriate rows
+	searchTable = document.getElementById('qs_table');
+	var allRows = searchTable.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+	// split all rows into entryRows and infoRows (e.g. abstract, comment, bibtex)
+	entryRows = new Array(); infoRows = new Array(); absRows = new Array(); revRows = new Array();
+
+	// get data from each row
+	entryRowsData = new Array(); absRowsData = new Array(); revRowsData = new Array(); 
+	
+	BibTeXKeys = new Array();
+	
+	for (var i=0, k=0, j=0; i<allRows.length;i++) {
+		if (allRows[i].className.match(/entry/)) {
+			entryRows[j] = allRows[i];
+			entryRowsData[j] = stripDiacritics(getTextContent(allRows[i]));
+			allRows[i].id ? BibTeXKeys[j] = allRows[i].id : allRows[i].id = 'autokey_'+j;
+			j ++;
+		} else {
+			infoRows[k++] = allRows[i];
+			// check for abstract/comment
+			if (allRows[i].className.match(/abstract/)) {
+				absRows.push(allRows[i]);
+				absRowsData[j-1] = stripDiacritics(getTextContent(allRows[i]));
+			} else if (allRows[i].className.match(/comment/)) {
+				revRows.push(allRows[i]);
+				revRowsData[j-1] = stripDiacritics(getTextContent(allRows[i]));
+			}
+		}
+	}
+	//number of entries and rows
+	numEntries = entryRows.length;
+	numInfo = infoRows.length;
+	numAbs = absRows.length;
+	numRev = revRows.length;
+}
+
+function quickSearch(){
+	
+	tInput = qsfield;
+
+	if (tInput.value.length == 0) {
+		showAll();
+		setStatistics(-1);
+		qsfield.className = '';
+		return;
+	} else {
+		t = stripDiacritics(tInput.value);
+
+		if(!searchRegExp) { t = escapeRegExp(t); }
+			
+		// only search for valid RegExp
+		try {
+			textRegExp = new RegExp(t,"i");
+			closeAllInfo();
+			qsfield.className = '';
+		}
+			catch(err) {
+			prevSearch = tInput.value;
+			qsfield.className = 'invalidsearch';
+			return;
+		}
+	}
+	
+	// count number of hits
+	var hits = 0;
+
+	// start looping through all entry rows
+	for (var i = 0; cRow = entryRows[i]; i++){
+
+		// only show search the cells if it isn't already hidden OR if the search term is getting shorter, then search all
+		if(cRow.className.indexOf('noshow')==-1 || tInput.value.length <= prevSearch.length){
+			var found = false; 
+
+			if (entryRowsData[i].search(textRegExp) != -1 || BibTeXKeys[i].search(textRegExp) != -1){ 
+				found = true;
+			} else {
+				if(searchAbstract && absRowsData[i]!=undefined) {
+					if (absRowsData[i].search(textRegExp) != -1){ found=true; } 
+				}
+				if(searchComment && revRowsData[i]!=undefined) {
+					if (revRowsData[i].search(textRegExp) != -1){ found=true; } 
+				}
+			}
+			
+			if (found){
+				cRow.className = 'entry show';
+				hits++;
+			} else {
+				cRow.className = 'entry noshow';
+			}
+		}
+	}
+
+	// update statistics
+	setStatistics(hits)
+	
+	// set previous search value
+	prevSearch = tInput.value;
+}
+
+
+// Strip Diacritics from text
+// http://stackoverflow.com/questions/990904/javascript-remove-accents-in-strings
+
+// String containing replacement characters for stripping accents 
+var stripstring = 
+    'AAAAAAACEEEEIIII'+
+    'DNOOOOO.OUUUUY..'+
+    'aaaaaaaceeeeiiii'+
+    'dnooooo.ouuuuy.y'+
+    'AaAaAaCcCcCcCcDd'+
+    'DdEeEeEeEeEeGgGg'+
+    'GgGgHhHhIiIiIiIi'+
+    'IiIiJjKkkLlLlLlL'+
+    'lJlNnNnNnnNnOoOo'+
+    'OoOoRrRrRrSsSsSs'+
+    'SsTtTtTtUuUuUuUu'+
+    'UuUuWwYyYZzZzZz.';
+
+function stripDiacritics(str){
+
+    if(noSquiggles==false){
+        return str;
+    }
+
+    var answer='';
+    for(var i=0;i<str.length;i++){
+        var ch=str[i];
+        var chindex=ch.charCodeAt(0)-192;   // Index of character code in the strip string
+        if(chindex>=0 && chindex<stripstring.length){
+            // Character is within our table, so we can strip the accent...
+            var outch=stripstring.charAt(chindex);
+            // ...unless it was shown as a '.'
+            if(outch!='.')ch=outch;
+        }
+        answer+=ch;
+    }
+    return answer;
+}
+
+// http://stackoverflow.com/questions/3446170/escape-string-for-use-in-javascript-regex
+// NOTE: must escape every \ in the export code because of the JabRef Export...
+function escapeRegExp(str) {
+  return str.replace(/[-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+}
+
+function toggleInfo(articleid,info) {
+
+	var entry = document.getElementById(articleid);
+	var abs = document.getElementById('abs_'+articleid);
+	var rev = document.getElementById('rev_'+articleid);
+	var bib = document.getElementById('bib_'+articleid);
+	
+	if (abs && info == 'abstract') {
+		abs.className.indexOf('noshow') == -1?abs.className = 'abstract noshow':abs.className = 'abstract show';
+	} else if (rev && info == 'comment') {
+		rev.className.indexOf('noshow') == -1?rev.className = 'comment noshow':rev.className = 'comment show';
+	} else if (bib && info == 'bibtex') {
+		bib.className.indexOf('noshow') == -1?bib.className = 'bibtex noshow':bib.className = 'bibtex show';
+	} else { 
+		return;
+	}
+
+	// check if one or the other is available
+	var revshow; var absshow; var bibshow;
+	(abs && abs.className.indexOf('noshow') == -1)? absshow = true: absshow = false;
+	(rev && rev.className.indexOf('noshow') == -1)? revshow = true: revshow = false;	
+	(bib && bib.className.indexOf('noshow') == -1)? bibshow = true: bibshow = false;
+	
+	// highlight original entry
+	if(entry) {
+		if (revshow || absshow || bibshow) {
+		entry.className = 'entry highlight show';
+		} else {
+		entry.className = 'entry show';
+		}
+	}
+	
+	// When there's a combination of abstract/comment/bibtex showing, need to add class for correct styling
+	if(absshow) {
+		(revshow||bibshow)?abs.className = 'abstract nextshow':abs.className = 'abstract';
+	} 
+	if (revshow) {
+		bibshow?rev.className = 'comment nextshow': rev.className = 'comment';
+	}	
+	
+}
+
+function setStatistics (hits) {
+	if(hits < 0) { hits=numEntries; }
+	if(stats) { stats.firstChild.data = hits + '/' + numEntries}
+}
+
+function getTextContent(node) {
+	// Function written by Arve Bersvendsen
+	// http://www.virtuelvis.com
+	
+	if (node.nodeType == 3) {
+	return node.nodeValue;
+	} // text node
+	if (node.nodeType == 1 && node.className != "infolinks") { // element node
+	var text = [];
+	for (var chld = node.firstChild;chld;chld=chld.nextSibling) {
+		text.push(getTextContent(chld));
+	}
+	return text.join("");
+	} return ""; // some other node, won't contain text nodes.
+}
+
+function showAll(){
+	closeAllInfo();
+	for (var i = 0; i < numEntries; i++){ entryRows[i].className = 'entry show'; }
+}
+
+function closeAllInfo(){
+	for (var i=0; i < numInfo; i++){
+		if (infoRows[i].className.indexOf('noshow') ==-1) {
+			infoRows[i].className = infoRows[i].className + ' noshow';
+		}
+	}
+}
+
+function clearQS() {
+	qsfield.value = '';
+	showAll();
+}
+
+function redoQS(){
+	showAll();
+	quickSearch(qsfield);
+}
+
+function updateSetting(obj){
+	var option = obj.id;
+	var checked = obj.value;
+
+	switch(option)
+	 {
+	 case "opt_searchAbs":
+	   searchAbstract=!searchAbstract;
+	   redoQS();
+	   break;
+	 case "opt_searchRev":
+	   searchComment=!searchComment;
+	   redoQS();
+	   break;
+	 case "opt_useRegExp":
+	   searchRegExp=!searchRegExp;
+	   redoQS();
+	   break;
+	 case "opt_noAccents":
+	   noSquiggles=!noSquiggles;
+	   loadTableData();
+	   redoQS();
+	   break;
+	 }
+}
+
+function initPreferences(){
+	if(searchAbstract){document.getElementById("opt_searchAbs").checked = true;}
+	if(searchComment){document.getElementById("opt_searchRev").checked = true;}
+	if(noSquiggles){document.getElementById("opt_noAccents").checked = true;}
+	if(searchRegExp){document.getElementById("opt_useRegExp").checked = true;}
+	
+	if(numAbs==0) {document.getElementById("opt_searchAbs").parentNode.style.display = 'none';}
+	if(numRev==0) {document.getElementById("opt_searchRev").parentNode.style.display = 'none';}
+}
+
+function toggleSettings(){
+	var togglebutton = document.getElementById('showsettings');
+	var settings = document.getElementById('settings');
+	
+	if(settings.className == "hidden"){
+		settings.className = "show";
+		togglebutton.innerText = "close settings";
+		togglebutton.textContent = "close settings";
+	}else{
+		settings.className = "hidden";
+		togglebutton.innerText = "settings...";		
+		togglebutton.textContent = "settings...";
+	}
+}
+
+-->
+</script>
+<style type="text/css">
+body { background-color: white; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.2; padding: 1em; color: #2E2E2E; margin: auto 2em; }
+
+form#quicksearch { width: auto; border-style: solid; border-color: gray; border-width: 1px 0px; padding: 0.7em 0.5em; display:none; position:relative; }
+span#searchstat {padding-left: 1em;}
+
+div#settings { margin-top:0.7em; /* border-bottom: 1px transparent solid; background-color: #efefef; border: 1px grey solid; */ }
+div#settings ul {margin: 0; padding: 0; }
+div#settings li {margin: 0; padding: 0 1em 0 0; display: inline; list-style: none; }
+div#settings li + li { border-left: 2px #efefef solid; padding-left: 0.5em;}
+div#settings input { margin-bottom: 0px;}
+
+div#settings.hidden {display:none;}
+
+#showsettings { border: 1px grey solid; padding: 0 0.5em; float:right; line-height: 1.6em; text-align: right; }
+#showsettings:hover { cursor: pointer; }
+
+.invalidsearch { background-color: red; }
+input[type="button"] { background-color: #efefef; border: 1px #2E2E2E solid;}
+
+table { width: 100%; empty-cells: show; border-spacing: 0em 0.2em; margin: 1em 0em; border-style: none; }
+th, td { border: 1px gray solid; border-width: 1px 1px; padding: 0.5em; vertical-align: top; text-align: left; }
+th { background-color: #efefef; }
+td + td, th + th { border-left: none; }
+
+td a { color: navy; text-decoration: none; }
+td a:hover  { text-decoration: underline; }
+
+tr.noshow { display: none;}
+tr.highlight td { background-color: #EFEFEF; border-top: 2px #2E2E2E solid; font-weight: bold; }
+tr.abstract td, tr.comment td, tr.bibtex td { background-color: #EFEFEF; text-align: justify; border-bottom: 2px #2E2E2E solid; }
+tr.nextshow td { border-bottom: 1px gray solid; }
+
+tr.bibtex pre { width: 100%; overflow: auto; white-space: pre-wrap;}
+p.infolinks { margin: 0.3em 0em 0em 0em; padding: 0px; }
+
+@media print {
+	p.infolinks, #qs_settings, #quicksearch, t.bibtex { display: none !important; }
+	tr { page-break-inside: avoid; }
+}
+</style>
 </head>
-
 <body>
 
-<!-- This document was automatically generated with bibtex2html 1.98
-     (see http://www.lri.fr/~filliatr/bibtex2html/),
-     with the following command:
-     bibtex2html.exe -r vitae_resume.bib  -->
-
-
-<table>
-
-
-  <tr valign="top">
-    <td align="right" class="bibtexnumber">
-    [<a name="VIDAL_OLIVERA_IEEELAT_2019">1</a>]
-    </td>
-    <td class="bibtexitem">
-    Pablo&nbsp;Javier Vidal and <b>Ana Carolina Olivera</b>.
-     Management of urban traffic flow based on traffic lights scheduling
-      optimization.
-     <em>IEEE Latin America Transactions</em>, 17(1):102--110, 2019.
-    [&nbsp;<a href="vitae_resume_bib.html#VIDAL_OLIVERA_IEEELAT_2019">bib</a>&nbsp;| 
-    <a href="http://dx.doi.org/10.1109/TLA.2019.8826701">http</a>&nbsp;]
-    
-    </td>
-    </tr>
-
-    <tr valign="top">
-      <td align="right" class="bibtexnumber">
-      [<a name="Baquela_Olivera_ORP_2018">2</a>]
-      </td>
-      <td class="bibtexitem">
-      Enrique&nbsp;Gabriel Baquela and <b>Ana Carolina Olivera</b>.
-       A novel hybrid multi-objective metamodel-based evolutionary
-        optimization algorithm.
-       <em>Operations Research Perspectives</em>, 2019.
-       Elsevier.
-      [&nbsp;<a href="vitae_resume_bib.html#Baquela_Olivera_ORP_2018">bib</a>&nbsp;| 
-      <a href="http://dx.doi.org/10.1016/j.orp.2019.100098">http</a>&nbsp;]
-      
-      </td>
-      </tr>
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="Nesmachnow_IJTST_2019">3</a>]
-</td>
-<td class="bibtexitem">
-Sergio Nesmachnow, Renzo Massobrio, Efra&iacute;n Arreche, Christine Mumford,
-  <b>Ana Carolina Olivera</b>, Pablo&nbsp;Javier Vidal, and Andrei Tchernykh.
- Traffic lights synchronization for Bus Rapid Transit using a
-  parallel evolutionary algorithm.
- <em>International Journal of Transportation Science and Technology</em>,
-  8(1):53--67, 2019.
-[&nbsp;<a href="vitae_resume_bib.html#Nesmachnow_IJTST_2019">bib</a>&nbsp;| 
-<a href="https://doi.org/10.1016/j.ijtst.2018.10.002">http</a>&nbsp;]
-
-</td>
+<form action="" id="quicksearch">
+<input type="text" id="qs_field" autocomplete="off" placeholder="Type to search..." /> <input type="button" onclick="clearQS()" value="clear" />
+<span id="searchstat">Matching entries: <span id="stat">0</span></span>
+<div id="showsettings" onclick="toggleSettings()">settings...</div>
+<div id="settings" class="hidden">
+<ul>
+<li><input type="checkbox" class="search_setting" id="opt_searchAbs" onchange="updateSetting(this)"><label for="opt_searchAbs"> include abstract</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_searchRev" onchange="updateSetting(this)"><label for="opt_searchRev"> include comment</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_useRegExp" onchange="updateSetting(this)"><label for="opt_useRegExp"> use RegExp</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_noAccents" onchange="updateSetting(this)"><label for="opt_noAccents"> ignore accents</label></li>
+</ul>
+</div>
+</form>
+<table id="qs_table" border="1">
+<thead><tr><th width="20%">Author</th><th width="30%">Title</th><th width="5%">Year</th><th width="30%">Journal/Proceedings</th><th width="10%">Reftype</th><th width="5%">DOI/URL</th></tr></thead>
+<tbody><tr id="DUSSAUT_ET_AL_ENTRECEI2020" class="entry">
+	<td>Dussaut, J., Ponzoni, I., Olivera, A. and Vidal, P.</td>
+	<td>Algoritmos Evolutivos Multiobjetivo aplicados a la Selecci&oacute;n de Caracter&iacute;sticas en Microarrays de Datos de C&aacute;ncer <p class="infolinks">[<a href="javascript:toggleInfo('DUSSAUT_ET_AL_ENTRECEI2020','bibtex')">BibTeX</a>]</p></td>
+	<td>2020</td>
+	<td>Entre Ciencia e Ingenier&iacute;a<br/>Vol. 14(28), pp. 40-45&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.31908/19098367.2014">DOI</a> &nbsp;</td>
 </tr>
-
-<tr valign="top">
-  <td align="right" class="bibtexnumber">
-  [<a name="Dussaut_ET_AL_CEC2018">4</a>]
-  </td>
-  <td class="bibtexitem">
-  Julieta&nbsp;Sol Dussaut, Pablo&nbsp;Javier Vidal, Ignacio Ponzoni, and <b>Ana
-    Carolina Olivera</b>.
-   Comparing multiobjective evolutionary algorithms for cancer data
-    microarray feature selection.
-   In <em>2018 IEEE Congress on Evolutionary Computation, CEC 2018,
-    Rio Janeiro, Brazil, July 8-13, 2018</em>, pages 1--8, 2018.
-  [&nbsp;<a href="vitae_resume_bib.html#Dussaut_ET_AL_CEC2018">bib</a>&nbsp;| 
-  <a href="http://dx.doi.org/10.1109/CEC.2018.8477812">DOI</a>&nbsp;| 
-  <a href="https://doi.org/10.1109/CEC.2018.8477812">http</a>&nbsp;]
-  
-  </td>
-  </tr>
-
-<tr valign="top">
-  <td align="right" class="bibtexnumber">
-  [<a name="VIDAL_OLIVERA_COMSIS_2018">5</a>]
-  </td>
-  <td class="bibtexitem">
-  Pablo&nbsp;Javier Vidal and <b>Ana Carolina Olivera</b>.
-   Solving the DNA fragment assembly problem with a parallel discrete
-    firefly algorithm implemented on GPU.
-   <em>Computer Science and Information Systems</em>, 15(2):273--293, 2018.
-  [&nbsp;<a href="vitae_resume_bib.html#VIDAL_OLIVERA_COMSIS_2018">bib</a>&nbsp;| 
-  <a href="http://dx.doi.org/10.2298/CSIS170510009V">http</a>&nbsp;]
-  
-  </td>
-  </tr>
-  
-  
-  <tr valign="top">
-  <td align="right" class="bibtexnumber">
-  [<a name="PERES_ET_AL_ASOC_2018">6</a>]
-  </td>
-  <td class="bibtexitem">
-  Matias P&eacute;res, Germ&aacute;n Ruiz, Sergio Nesmachnow, and <b>Ana Carolina
-    Olivera</b>.
-   Multiobjective evolutionary optimization of traffic flow and
-    pollution in Montevideo, Uruguay.
-   <em>Applied Soft Computing</em>, 70:472--485, 2018.
-  [&nbsp;<a href="vitae_resume_bib.html#PERES_ET_AL_ASOC_2018">bib</a>&nbsp;| 
-  <a href="http://dx.doi.org/10.1016/j.asoc.2018.05.044">http</a>&nbsp;]
-  
-  </td>
-  </tr>
-
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="PEGELS_ET_AL_ARGENCON_2018">7</a>]
-</td>
-<td class="bibtexitem">
-S.&nbsp;Pegels, S.&nbsp;Pegels, and A.&nbsp;C. Olivera.
- Metaheuristics applied to the optimization of vehicular traffic in
-  posadas downtown.
- In <em>2018 IEEE Biennial Congress of Argentina (ARGENCON)</em>, pages
-  1--7, 2018.
-[&nbsp;<a href="vitae_resume_bib.html#PEGELS_ET_AL_ARGENCON_2018">bib</a>&nbsp;| 
-<a href="http://dx.doi.org/10.1109/ARGENCON.2018.8646133">http</a>&nbsp;]
-
-</td>
+<tr id="bib_DUSSAUT_ET_AL_ENTRECEI2020" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{DUSSAUT_ET_AL_ENTRECEI2020,
+  author = {Dussaut, Julieta and Ponzoni, Ignacio and Olivera, Ana and Vidal, Pablo},
+  title = {Algoritmos Evolutivos Multiobjetivo aplicados a la Selecci&oacute;n de Caracter&iacute;sticas en Microarrays de Datos de C&aacute;ncer},
+  journal = {Entre Ciencia e Ingenier&iacute;a},
+  year = {2020},
+  volume = {14},
+  number = {28},
+  pages = {40-45},
+  doi = {https://doi.org/10.31908/19098367.2014}
+}
+</pre></td>
 </tr>
-
-
-
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="VIDAL_OLIVERA_DYNA_2017">8</a>]
-</td>
-<td class="bibtexitem">
-Pablo&nbsp;Javier Vidal and <b>Ana Carolina Olivera</b>.
- Ensamblado de fragmentos de ADN utilizando un novedoso algoritmo de
-  luci&eacute;rnaga en GPU.
- <em>DYNA</em>, 85(204):108--116, 2018.
-[&nbsp;<a href="vitae_resume_bib.html#VIDAL_OLIVERA_DYNA_2017">bib</a>&nbsp;| 
-<a href="http://dx.doi.org/10.15446/dyna.v85n204.60078">http</a>&nbsp;]
-
-</td>
+<tr id="ROJAS_ET_AL_JAIIO2020" class="entry">
+	<td>Rojas, M.G., Carballido, J.A., <b>Ana C. Olivera</b> and Vidal, P.J.</td>
+	<td>Optimizaci&oacute;n de Support Vector Machine mediante metaheur&iacute;sticas para clasificaci&oacute;n de retinopatia diab&eacute;tica <p class="infolinks">[<a href="javascript:toggleInfo('ROJAS_ET_AL_JAIIO2020','bibtex')">BibTeX</a>]</p></td>
+	<td>2020</td>
+	<td>Simposio Argentino de Inteligencia Artificial de JAIIO 2020&nbsp;</td>
+	<td>conference</td>
+	<td>&nbsp;</td>
 </tr>
-
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="VidalOlivera2014">9</a>]
-</td>
-<td class="bibtexitem">
-Pablo Vidal and <b>Ana Carolina Olivera</b>.
- A parallel discrete firefly algorithm on GPU for permutation
-  combinatorial optimization problems.
- <em>Communications in Computer and Information Science</em>,
-  485:191--205, 2014.
- Springer Berlin Heidelberg. Indexada en DBLP y SCOPUS.
-[&nbsp;<a href="vitae_resume_bib.html#VidalOlivera2014">bib</a>&nbsp;| 
-<a href="http://dx.doi.org/10.1007/978-3-662-45483-1_14">http</a>&nbsp;]
-
-</td>
+<tr id="bib_ROJAS_ET_AL_JAIIO2020" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@conference{ROJAS_ET_AL_JAIIO2020,
+  author = {Mat&iacute;as G. Rojas and Jessica A. Carballido and <b>Ana C. Olivera</b> and Pablo J. Vidal},
+  title = {Optimizaci&oacute;n de Support Vector Machine mediante metaheur&iacute;sticas para clasificaci&oacute;n de retinopatia diab&eacute;tica},
+  booktitle = {Simposio Argentino de Inteligencia Artificial de JAIIO 2020},
+  year = {2020}
+}
+</pre></td>
 </tr>
-
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="garcianieto2010a">10</a>]
-</td>
-<td class="bibtexitem">
-Jos&eacute;&nbsp;Manuel Garc&iacute;a-Nieto, <b> Ana Carolina Olivera</b>, and Enrique Alba.
- Optimal cycle program of traffic lights with particle swarm
-  optimization.
- <em>IEEE Transactions On Evolutionary Computation</em>, 17(6):823--839,
-  2013.
-[&nbsp;<a href="vitae_resume_bib.html#garcianieto2010a">bib</a>&nbsp;| 
-<a href="http://dx.doi.org/10.1109/TEVC.2013.2260755">http</a>&nbsp;]
-
-</td>
+<tr id="ROJAS_ARGENCON2020" class="entry">
+	<td>Rojas, M.G., Carballido, J.A., <b>Ana Carolina Olivera</b> and Vidal., P.J.</td>
+	<td>A Memetic Cellular Genetic Algorithm for Multiple Sequence Alignment <p class="infolinks">[<a href="javascript:toggleInfo('ROJAS_ARGENCON2020','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('ROJAS_ARGENCON2020','bibtex')">BibTeX</a>]</p></td>
+	<td>2020</td>
+	<td>Proceedings of the 2020 IEEE Biennial Congress of Argentina&nbsp;</td>
+	<td>conference</td>
+	<td>&nbsp;</td>
 </tr>
-
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="FrutosDYNA2015">11</a>]
-</td>
-<td class="bibtexitem">
-Mariano Frutos, <b> Ana Carolina Olivera</b>, and Fernando Tohm&eacute;.
- A hybrid genetic algorithm for roadef'05-like complex production
-  problems.
- <em>DYNA-Colombia</em>, 82(190):82--88, 2015.
-[&nbsp;<a href="vitae_resume_bib.html#FrutosDYNA2015">bib</a>&nbsp;| 
-<a href="http://dx.doi.org/10.15446/dyna.v82n190.43137">http</a>&nbsp;]
-
-</td>
+<tr id="abs_ROJAS_ARGENCON2020" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The Deoxyribonucleic Acid Fragment Assembly Problem represents an interesting research topic in the field of bioinformatics. This problem consists in reconstructing a DNA chain as close to the original sequence from a set of DNA fragments taken randomly. Several authors have proposed different approaches to solve Deoxyribonucleic Acid Fragment Assembly Problem. In particular, nature-inspired algorithms has been used for its resolution. Among these techniques, the Cuckoo Search is a recent method based on the breeding of the cuckoo birds. In this paper, a discrete Cuckoo Search algorithm is adapted to DNA-FAP hybridising with the behaviour of two different local searches to improve the search capabilities of the canonical algorithm. A numerical evaluation of both proposals and the canonical version is carried out using a well-known benchmark dataset. Results demonstrate that the hybridisation improves the search and transform the cuckoo search in a robust procedure with the potential to deal with longer sequences or sequences of unknown length as well.</td>
 </tr>
-
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="BaquelaSpringer2017">12</a>]
-</td>
-<td class="bibtexitem">
-Enrique&nbsp;Gabriel Baquela and <b>Ana Carolina Olivera</b>.
- A multi-objective optimization via simulation framework for
-  restructuring traffic networks subject to increases in population.
- In F.&nbsp;Yalaoui L.&nbsp;Amodeo, E-G.&nbsp;Talbi, editor, <em>Recent Developments
-  in Metaheuristics</em>, number&nbsp;62, pages 199--218. Springer, 2017.
-[&nbsp;<a href="vitae_resume_bib.html#BaquelaSpringer2017">bib</a>&nbsp;| 
-<a href="http://dx.doi.org/10.1007/978-3-319-58253-5_13">http</a>&nbsp;]
-
-</td>
+<tr id="bib_ROJAS_ARGENCON2020" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@conference{ROJAS_ARGENCON2020,
+  author = {Mat&iacute;as Gabriel Rojas and Jessica Andrea Carballido and <b>Ana Carolina Olivera</b> and Pablo Javier Vidal.},
+  title = {A Memetic Cellular Genetic Algorithm for Multiple Sequence Alignment},
+  booktitle = {Proceedings of the 2020 IEEE Biennial Congress of Argentina},
+  year = {2020}
+}
+</pre></td>
 </tr>
-
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="OliveraAPIN2015">13</a>]
-</td>
-<td class="bibtexitem">
-<b>Ana Carolina Olivera</b>, Jos&eacute;&nbsp;Manuel Garc&iacute;a-Nieto, and Enrique
-  Alba.
- Reducing vehicle emissions and fuel consumption in the city by using
-  particle swarm optimization.
- <em>Applied Intelligence</em>, 42(3):389--405, 2015.
-[&nbsp;<a href="vitae_resume_bib.html#OliveraAPIN2015">bib</a>&nbsp;| 
-<a href="http://dx.doi.org/10.1007/s10489-014-0604-3">http</a>&nbsp;]
-
-</td>
+<tr id="ROJAS_CICCSI2020" class="entry">
+	<td>Rojas, M.G., Carballido, J.A., <b>Ana Carolina Olivera</b> and Vidal., P.J.</td>
+	<td>Hybrid Cuckoo Search for solving DNA Fragment Assembly Problem <p class="infolinks">[<a href="javascript:toggleInfo('ROJAS_CICCSI2020','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('ROJAS_CICCSI2020','bibtex')">BibTeX</a>]</p></td>
+	<td>2020</td>
+	<td>IV Congreso Internacional de Ciencias de la Computaci&oacute;n y Sistemas de Informaci&oacute;n&nbsp;</td>
+	<td>conference</td>
+	<td>&nbsp;</td>
 </tr>
-
-
-<tr valign="top">
-<td align="right" class="bibtexnumber">
-[<a name="oliveraChapter2013">14</a>]
-</td>
-<td class="bibtexitem">
-<b>Ana Carolina Olivera</b>, Mariano Frutos, and Jessica&nbsp;Andrea Carballido.
- <em>Metaheuristics in Water, Geotechnical and Transport
-  Engineering</em>, chapter An Improved Hybrid Algorithm for Stochastic Bus-Network
-  Design, pages 417 -- 438.
- Elsevier, Oxford, 2013.
-[&nbsp;<a href="vitae_resume_bib.html#oliveraChapter2013">bib</a>&nbsp;| 
-<a href="http://dx.doi.org/10.1016/B978-0-12-398296-4.00018-0">http</a>&nbsp;]
-
-</td>
+<tr id="abs_ROJAS_CICCSI2020" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The Deoxyribonucleic Acid Fragment Assembly Problem represents an interesting research topic in the field of bioinformatics. This problem consists in reconstructing a DNA chain as close to the original sequence from a set of DNA fragments taken randomly. Several authors have proposed different approaches to solve Deoxyribonucleic Acid Fragment Assembly Problem. In particular, nature-inspired algorithms has been used for its resolution. Among these techniques, the Cuckoo Search is a recent method based on the breeding of the cuckoo birds. In this paper, a discrete Cuckoo Search algorithm is adapted to DNA-FAP hybridising with the behaviour of two different local searches to improve the search capabilities of the canonical algorithm. A numerical evaluation of both proposals and the canonical version is carried out using a well-known benchmark dataset. Results demonstrate that the hybridisation improves the search and transform the cuckoo search in a robust procedure with the potential to deal with longer sequences or sequences of unknown length as well.</td>
 </tr>
-</table><hr><p><em>This file was generated by
-<a href="http://www.lri.fr/~filliatr/bibtex2html/">bibtex2html</a> 1.98.</em></p>
-
-  <!-- Vendor JS Files -->
-  <script src="assets/vendor/jquery/jquery.min.js"></script>
-  <script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-  <script src="assets/vendor/jquery.easing/jquery.easing.min.js"></script>
-  <script src="assets/vendor/php-email-form/validate.js"></script>
-  <script src="assets/vendor/waypoints/jquery.waypoints.min.js"></script>
-  <script src="assets/vendor/counterup/counterup.min.js"></script>
-  <script src="assets/vendor/isotope-layout/isotope.pkgd.min.js"></script>
-  <script src="assets/vendor/venobox/venobox.min.js"></script>
-  <script src="assets/vendor/owl.carousel/owl.carousel.min.js"></script>
-  <script src="assets/vendor/typed.js/typed.min.js"></script>
-  <script src="assets/vendor/aos/aos.js"></script>
-  <!-- Template Main JS File -->
-  <script src="assets/js/main.js"></script>
-
+<tr id="bib_ROJAS_CICCSI2020" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@conference{ROJAS_CICCSI2020,
+  author = {Mat&iacute;as Gabriel Rojas and Jessica Andrea Carballido and <b>Ana Carolina Olivera</b> and Pablo Javier Vidal.},
+  title = {Hybrid Cuckoo Search for solving DNA Fragment Assembly Problem},
+  booktitle = {IV Congreso Internacional de Ciencias de la Computaci&oacute;n y Sistemas de Informaci&oacute;n},
+  year = {2020}
+}
+</pre></td>
+</tr>
+<tr id="ROJAS_ETAL_LAT_MCGA2020" class="entry">
+	<td>Rojas, M.G., <b>Ana Carolina Olivera</b>, Carballido, J.A. and Vidal, P.J.</td>
+	<td>A Memetic Cellular Genetic Algorithm for Cancer Data Microarray Feature Selection <p class="infolinks">[<a href="javascript:toggleInfo('ROJAS_ETAL_LAT_MCGA2020','bibtex')">BibTeX</a>]</p></td>
+	<td>2020</td>
+	<td>IEEE Latin America Transactions&nbsp;</td>
+	<td>article</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="bib_ROJAS_ETAL_LAT_MCGA2020" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{ROJAS_ETAL_LAT_MCGA2020,
+  author = {Mat&iacute;as Gabriel Rojas and <b>Ana Carolina Olivera</b> and Jessica Andrea Carballido and Pablo Javier Vidal},
+  title = {A Memetic Cellular Genetic Algorithm for Cancer Data Microarray Feature Selection},
+  journal = {IEEE Latin America Transactions},
+  year = {2020},
+  note = {en Prensa}
+}
+</pre></td>
+</tr>
+<tr id="VIDAL_CICCSI2020" class="entry">
+	<td>Vidal, P.J. and <b>Ana Carolina Olivera</b></td>
+	<td>Avoided traffic jams optimising the scheduling of signalised intersection of Mendoza Downtown and surrounding <p class="infolinks">[<a href="javascript:toggleInfo('VIDAL_CICCSI2020','bibtex')">BibTeX</a>]</p></td>
+	<td>2020</td>
+	<td>IV Congreso Internacional de Ciencias de la Computaci&oacute;n y Sistemas de Informaci&oacute;n&nbsp;</td>
+	<td>conference</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="bib_VIDAL_CICCSI2020" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@conference{VIDAL_CICCSI2020,
+  author = {Pablo Javier Vidal and <b>Ana Carolina Olivera</b>},
+  title = {Avoided traffic jams optimising the scheduling of signalised intersection of Mendoza Downtown and surrounding},
+  booktitle = {IV Congreso Internacional de Ciencias de la Computaci&oacute;n y Sistemas de Informaci&oacute;n},
+  year = {2020}
+}
+</pre></td>
+</tr>
+<tr id="Baquela_Olivera_ORP_2018" class="entry">
+	<td>Baquela, E.G. and <b>Ana Carolina Olivera</b></td>
+	<td>A Novel Hybrid Multi-Objective Metamodel-Based Evolutionary Optimization Algorithm <p class="infolinks">[<a href="javascript:toggleInfo('Baquela_Olivera_ORP_2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>Operations Research Perspectives&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.1016/j.orp.2019.100098">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_Baquela_Olivera_ORP_2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Baquela_Olivera_ORP_2018,
+  author = {Enrique Gabriel Baquela and <b>Ana Carolina Olivera</b>},
+  title = {A Novel Hybrid Multi-Objective Metamodel-Based Evolutionary Optimization Algorithm},
+  journal = {Operations Research Perspectives},
+  year = {2019},
+  note = {Elsevier},
+  url = {http://dx.doi.org/10.1016/j.orp.2019.100098}
+}
+</pre></td>
+</tr>
+<tr id="Nesmachnow_IJTST_2019" class="entry">
+	<td>Nesmachnow, S., Massobrio, R., Arreche, E., Mumford, C., <b>Ana Carolina Olivera</b>, Vidal, P.J. and Tchernykh, A.</td>
+	<td>Traffic lights synchronization for Bus Rapid Transit using a parallel evolutionary algorithm <p class="infolinks">[<a href="javascript:toggleInfo('Nesmachnow_IJTST_2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>International Journal of Transportation Science and Technology<br/>Vol. 8(1), pp. 53-67&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.ijtst.2018.10.002">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_Nesmachnow_IJTST_2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Nesmachnow_IJTST_2019,
+  author = {Sergio Nesmachnow and Renzo Massobrio and Efra&iacute;n Arreche and Christine Mumford and <b>Ana Carolina Olivera</b> and Pablo Javier Vidal and Andrei Tchernykh},
+  title = {Traffic lights synchronization for Bus Rapid Transit using a parallel evolutionary algorithm},
+  journal = {International Journal of Transportation Science and Technology},
+  year = {2019},
+  volume = {8},
+  number = {1},
+  pages = {53-67},
+  url = {https://doi.org/10.1016/j.ijtst.2018.10.002}
+}
+</pre></td>
+</tr>
+<tr id="VIDAL_OLIVERA_IEEELAT_2019" class="entry">
+	<td>Vidal, P.J. and <b>Ana Carolina Olivera</b></td>
+	<td>Management of urban traffic flow based on traffic lights scheduling optimization <p class="infolinks">[<a href="javascript:toggleInfo('VIDAL_OLIVERA_IEEELAT_2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>IEEE Latin America Transactions<br/>Vol. 17(1), pp. 102-110&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.1109/TLA.2019.8826701">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_VIDAL_OLIVERA_IEEELAT_2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{VIDAL_OLIVERA_IEEELAT_2019,
+  author = {Pablo Javier Vidal and <b>Ana Carolina Olivera</b>},
+  title = {Management of urban traffic flow based on traffic lights scheduling optimization},
+  journal = {IEEE Latin America Transactions},
+  year = {2019},
+  volume = {17},
+  number = {1},
+  pages = {102-110},
+  url = {http://dx.doi.org/10.1109/TLA.2019.8826701}
+}
+</pre></td>
+</tr>
+<tr id="Dussaut_ET_AL_CEC2018" class="entry">
+	<td>Dussaut, J.S., Vidal, P.J., Ponzoni, I. and <b>Ana Carolina Olivera</b></td>
+	<td>Comparing Multiobjective Evolutionary Algorithms for Cancer Data Microarray Feature Selection <p class="infolinks">[<a href="javascript:toggleInfo('Dussaut_ET_AL_CEC2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>2018 IEEE Congress on Evolutionary Computation, CEC 2018, Rio Janeiro, Brazil, July 8-13, 2018, pp. 1-8&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/CEC.2018.8477812">DOI</a> <a href="https://doi.org/10.1109/CEC.2018.8477812">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_Dussaut_ET_AL_CEC2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Dussaut_ET_AL_CEC2018,
+  author = {Julieta Sol Dussaut and Pablo Javier Vidal and Ignacio Ponzoni and <b>Ana Carolina Olivera</b>},
+  title = {Comparing Multiobjective Evolutionary Algorithms for Cancer Data Microarray Feature Selection},
+  booktitle = {2018 IEEE Congress on Evolutionary Computation, CEC 2018, Rio Janeiro, Brazil, July 8-13, 2018},
+  year = {2018},
+  pages = {1--8},
+  url = {https://doi.org/10.1109/CEC.2018.8477812},
+  doi = {https://doi.org/10.1109/CEC.2018.8477812}
+}
+</pre></td>
+</tr>
+<tr id="PEGELS_ET_AL_ARGENCON_2018" class="entry">
+	<td>Pegels, S., Pegels, S. and Olivera, A.C.</td>
+	<td>Metaheuristics applied to the optimization of vehicular traffic in Posadas Downtown <p class="infolinks">[<a href="javascript:toggleInfo('PEGELS_ET_AL_ARGENCON_2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>2018 IEEE Biennial Congress of Argentina (ARGENCON), pp. 1-7&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="http://dx.doi.org/10.1109/ARGENCON.2018.8646133">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_PEGELS_ET_AL_ARGENCON_2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{PEGELS_ET_AL_ARGENCON_2018,
+  author = {S. Pegels and S. Pegels and A. C. Olivera},
+  title = {Metaheuristics applied to the optimization of vehicular traffic in Posadas Downtown},
+  booktitle = {2018 IEEE Biennial Congress of Argentina (ARGENCON)},
+  year = {2018},
+  pages = {1-7},
+  url = {http://dx.doi.org/10.1109/ARGENCON.2018.8646133}
+}
+</pre></td>
+</tr>
+<tr id="PERES_ET_AL_ASOC_2018" class="entry">
+	<td>P&eacute;res, M., Ruiz, G., Nesmachnow, S. and <b>Ana Carolina Olivera</b></td>
+	<td>Multiobjective Evolutionary Optimization of Traffic Flow and Pollution in Montevideo, Uruguay <p class="infolinks">[<a href="javascript:toggleInfo('PERES_ET_AL_ASOC_2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>Applied Soft Computing<br/>Vol. 70, pp. 472-485&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.1016/j.asoc.2018.05.044">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_PERES_ET_AL_ASOC_2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{PERES_ET_AL_ASOC_2018,
+  author = {Matias P&eacute;res and Germ&aacute;n Ruiz and Sergio Nesmachnow and <b>Ana Carolina Olivera</b>},
+  title = {Multiobjective Evolutionary Optimization of Traffic Flow and Pollution in Montevideo, Uruguay},
+  journal = {Applied Soft Computing},
+  year = {2018},
+  volume = {70},
+  pages = {472--485},
+  url = {http://dx.doi.org/10.1016/j.asoc.2018.05.044}
+}
+</pre></td>
+</tr>
+<tr id="VIDAL_OLIVERA_DYNA_2017" class="entry">
+	<td>Vidal, P.J. and <b>Ana Carolina Olivera</b></td>
+	<td>Ensamblado de fragmentos de ADN utilizando un novedoso algoritmo de luci&eacute;rnaga en GPU <p class="infolinks">[<a href="javascript:toggleInfo('VIDAL_OLIVERA_DYNA_2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>DYNA<br/>Vol. 85(204), pp. 108-116&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.15446/dyna.v85n204.60078">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_VIDAL_OLIVERA_DYNA_2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{VIDAL_OLIVERA_DYNA_2017,
+  author = {Pablo Javier Vidal and <b>Ana Carolina Olivera</b>},
+  title = {Ensamblado de fragmentos de ADN utilizando un novedoso algoritmo de luci&eacute;rnaga en GPU},
+  journal = {DYNA},
+  publisher = {Universidad Nacional de Colombia},
+  year = {2018},
+  volume = {85},
+  number = {204},
+  pages = {108--116},
+  url = {http://dx.doi.org/10.15446/dyna.v85n204.60078}
+}
+</pre></td>
+</tr>
+<tr id="VIDAL_OLIVERA_COMSIS_2018" class="entry">
+	<td>Vidal, P.J. and <b>Ana Carolina Olivera</b></td>
+	<td>Solving the DNA Fragment Assembly Problem with a Parallel Discrete Firefly Algorithm implemented on GPU <p class="infolinks">[<a href="javascript:toggleInfo('VIDAL_OLIVERA_COMSIS_2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>Computer Science and Information Systems<br/>Vol. 15(2), pp. 273-293&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.2298/CSIS170510009V">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_VIDAL_OLIVERA_COMSIS_2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{VIDAL_OLIVERA_COMSIS_2018,
+  author = {Pablo Javier Vidal and <b>Ana Carolina Olivera</b>},
+  title = {Solving the DNA Fragment Assembly Problem with a Parallel Discrete Firefly Algorithm implemented on GPU},
+  journal = {Computer Science and Information Systems},
+  year = {2018},
+  volume = {15},
+  number = {2},
+  pages = {273-293},
+  url = {http://dx.doi.org/10.2298/CSIS170510009V}
+}
+</pre></td>
+</tr>
+<tr id="BaquelaSpringer2017" class="entry">
+	<td>Baquela, E.G. and <b>Ana Carolina Olivera</b></td>
+	<td>A Multi-Objective Optimization via Simulation framework for restructuring traffic networks subject to increases in population <p class="infolinks">[<a href="javascript:toggleInfo('BaquelaSpringer2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>(62)Recent Developments in Metaheuristics, pp. 199-218&nbsp;</td>
+	<td>incollection</td>
+	<td><a href="http://dx.doi.org/10.1007/978-3-319-58253-5_13">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_BaquelaSpringer2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@incollection{BaquelaSpringer2017,
+  author = {Enrique Gabriel Baquela and <b>Ana Carolina Olivera</b>},
+  title = {A Multi-Objective Optimization via Simulation framework for restructuring traffic networks subject to increases in population},
+  booktitle = {Recent Developments in Metaheuristics},
+  publisher = {Springer},
+  year = {2017},
+  number = {62},
+  pages = {199-218},
+  url = {http://dx.doi.org/10.1007/978-3-319-58253-5_13}
+}
+</pre></td>
+</tr>
+<tr id="FrutosDYNA2015" class="entry">
+	<td>Frutos, M., <b>Ana Carolina Olivera</b>a and Tohm&eacute;, F.</td>
+	<td>A Hybrid Genetic Algorithm for ROADEF'05-Like Complex Production Problems <p class="infolinks">[<a href="javascript:toggleInfo('FrutosDYNA2015','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>DYNA-Colombia<br/>Vol. 82(190), pp. 82-88&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.15446/dyna.v82n190.43137">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_FrutosDYNA2015" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{FrutosDYNA2015,
+  author = {Mariano Frutos and <b>Ana Carolina Olivera</b>a and Fernando Tohm&eacute;},
+  title = {A Hybrid Genetic Algorithm for ROADEF'05-Like Complex Production Problems},
+  journal = {DYNA-Colombia},
+  year = {2015},
+  volume = {82},
+  number = {190},
+  pages = {82--88},
+  url = {http://dx.doi.org/10.15446/dyna.v82n190.43137}
+}
+</pre></td>
+</tr>
+<tr id="OliveraAPIN2015" class="entry">
+	<td><b>Ana Carolina Olivera</b>, Garc\ia-Nieto, J.M. and Alba, E.</td>
+	<td>Reducing Vehicle Emissions and Fuel Consumption in the City by Using Particle Swarm Optimization <p class="infolinks">[<a href="javascript:toggleInfo('OliveraAPIN2015','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>Applied Intelligence<br/>Vol. 42(3), pp. 389-405&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.1007/s10489-014-0604-3">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_OliveraAPIN2015" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{OliveraAPIN2015,
+  author = {<b>Ana Carolina Olivera</b> and Jos&eacute; Manuel Garc\ia-Nieto and Enrique Alba},
+  title = {Reducing Vehicle Emissions and Fuel Consumption in the City by Using Particle Swarm Optimization},
+  journal = {Applied Intelligence},
+  year = {2015},
+  volume = {42},
+  number = {3},
+  pages = {389-405},
+  url = {http://dx.doi.org/10.1007/s10489-014-0604-3}
+}
+</pre></td>
+</tr>
+<tr id="VidalOlivera2014" class="entry">
+	<td>Vidal, P. and <b>Ana Carolina Olivera</b></td>
+	<td>A Parallel Discrete Firefly Algorithm on GPU for Permutation Combinatorial Optimization Problems <p class="infolinks">[<a href="javascript:toggleInfo('VidalOlivera2014','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>Communications in Computer and Information Science<br/>Vol. 485High Performance Computing, pp. 191-205&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.1007/978-3-662-45483-1_14">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_VidalOlivera2014" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{VidalOlivera2014,
+  author = {Pablo Vidal and <b>Ana Carolina Olivera</b>},
+  title = {A Parallel Discrete Firefly Algorithm on GPU for Permutation Combinatorial Optimization Problems},
+  booktitle = {High Performance Computing},
+  journal = {Communications in Computer and Information Science},
+  publisher = {Springer Berlin Heidelberg},
+  year = {2014},
+  volume = {485},
+  pages = {191-205},
+  note = {Springer Berlin Heidelberg. Indexada en DBLP y SCOPUS. pdfnewwindow=true]run:./publicaciones/VIDAL_OLIVERA_CCIS_2014.pdf[PDF]},
+  url = {http://dx.doi.org/10.1007/978-3-662-45483-1_14}
+}
+</pre></td>
+</tr>
+<tr id="garcianieto2010a" class="entry">
+	<td>Garc&iacute;a-Nieto, J.M., <b>Ana Carolina Olivera</b>a and Alba, E.</td>
+	<td>Optimal Cycle Program of Traffic Lights with Particle Swarm Optimization <p class="infolinks">[<a href="javascript:toggleInfo('garcianieto2010a','bibtex')">BibTeX</a>]</p></td>
+	<td>2013</td>
+	<td>IEEE Transactions On Evolutionary Computation<br/>Vol. 17(6), pp. 823-839&nbsp;</td>
+	<td>article</td>
+	<td><a href="http://dx.doi.org/10.1109/TEVC.2013.2260755">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_garcianieto2010a" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{garcianieto2010a,
+  author = {Jos&eacute; Manuel Garc&iacute;a-Nieto and <b>Ana Carolina Olivera</b>a and Enrique Alba},
+  title = {Optimal Cycle Program of Traffic Lights with Particle Swarm Optimization},
+  journal = {IEEE Transactions On Evolutionary Computation},
+  year = {2013},
+  volume = {17},
+  number = {6},
+  pages = {823-839},
+  url = {http://dx.doi.org/10.1109/TEVC.2013.2260755}
+}
+</pre></td>
+</tr>
+<tr id="oliveraChapter2013" class="entry">
+	<td><b>Ana Carolina Olivera</b>, Frutos, M. and Carballido, J.A.</td>
+	<td>Metaheuristics in Water, Geotechnical and Transport Engineering <p class="infolinks">[<a href="javascript:toggleInfo('oliveraChapter2013','bibtex')">BibTeX</a>]</p></td>
+	<td>2013</td>
+	<td>, pp. 417 - 438&nbsp;</td>
+	<td>inbook</td>
+	<td><a href="http://dx.doi.org/10.1016/B978-0-12-398296-4.00018-0">URL</a>&nbsp;</td>
+</tr>
+<tr id="bib_oliveraChapter2013" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inbook{oliveraChapter2013,
+  author = {<b>Ana Carolina Olivera</b> and Mariano Frutos and Jessica Andrea Carballido},
+  title = {Metaheuristics in Water, Geotechnical and Transport Engineering},
+  publisher = {Elsevier},
+  year = {2013},
+  pages = {417 - 438},
+  url = {http://dx.doi.org/10.1016/B978-0-12-398296-4.00018-0}
+}
+</pre></td>
+</tr>
+<tr id="frutosANOR2012" class="entry">
+	<td>Frutos, M., <b>Ana Carolina Olivera</b>a and Tohm&eacute;, F.</td>
+	<td>A memetic algorithm based on a NSGAII scheme for the flexible job-shop scheduling problem <p class="infolinks">[<a href="javascript:toggleInfo('frutosANOR2012','bibtex')">BibTeX</a>]</p></td>
+	<td>2010</td>
+	<td>Annals of Operations Research<br/>Vol. 181, pp. 745-765&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s10479-010-0751-9">DOI</a> &nbsp;</td>
+</tr>
+<tr id="bib_frutosANOR2012" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{frutosANOR2012,
+  author = {Mariano Frutos and <b>Ana Carolina Olivera</b>a and Fernando Tohm&eacute;},
+  title = {A memetic algorithm based on a NSGAII scheme for the flexible job-shop scheduling problem},
+  journal = {Annals of Operations Research},
+  publisher = {Springer US},
+  year = {2010},
+  volume = {181},
+  pages = {745-765},
+  doi = {https://doi.org/10.1007/s10479-010-0751-9}
+}
+</pre></td>
+</tr>
+</tbody>
+</table>
+<footer>
+ <small>Created by <a href="http://jabref.sourceforge.net">JabRef</a> on 03/02/2021.</small>
+</footer>
+<!-- file generated by JabRef -->
 </body>
 </html>
